@@ -1,8 +1,10 @@
 // godraw is a local whiteboard in the manner of tldraw, drawn with MyGo's
-// native UI. It reads and writes tldraw's .tldr files.
+// native UI. It reads and writes tldraw's .tldr files, and keeps them in a
+// folder of its own, which its home screen shows.
 package main
 
 import (
+	"errors"
 	"io"
 	"log"
 	"os"
@@ -14,6 +16,8 @@ import (
 
 	"godraw/internal/app"
 	"godraw/internal/doc"
+	"godraw/internal/home"
+	"godraw/internal/vault"
 )
 
 // window is what a document's window holds.
@@ -35,6 +39,9 @@ func (w *window) Window() *mygo.Window { return w.win }
 
 // openDrawing opens a drawing in a window of its own, off the main thread.
 var openDrawing func(path string)
+
+// newDrawing starts a drawing in the folder, and opens it.
+var newDrawing func()
 
 // windows finds the state of a window, for the menus.
 var windows = map[*mygo.Window]*window{}
@@ -61,13 +68,15 @@ func act(fn func(a *app.App)) func(*mygo.MenuItem, *mygo.Window) {
 	}
 }
 
-func menu() *mygo.Menu {
+func menu(showHome func()) *mygo.Menu {
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
 		{Label: "File", Submenu: []*mygo.MenuItem{
-			{Role: mygo.RoleNew},
+			{Label: "New Drawing", Accelerator: "CmdOrCtrl+N", Click: func(*mygo.MenuItem, *mygo.Window) { newDrawing() }},
 			{Role: mygo.RoleOpen},
 			{Role: mygo.RoleOpenRecent},
+			mygo.Separator(),
+			{Label: "Home", Accelerator: "CmdOrCtrl+Shift+H", Click: func(*mygo.MenuItem, *mygo.Window) { showHome() }},
 			mygo.Separator(),
 			{Role: mygo.RoleClose},
 			{Role: mygo.RoleSave},
@@ -122,6 +131,16 @@ func isDrawing(path string) bool { return strings.EqualFold(filepath.Ext(path), 
 
 func main() {
 	files := fileArgs()
+
+	// The folder the app keeps its drawings in, made the first time it runs.
+	v, err := vault.Open()
+	if err != nil {
+		log.Fatalf("godraw: %v", err)
+	}
+	if err := v.Welcome(); err != nil {
+		log.Printf("godraw: %v", err)
+	}
+
 	var docs *mygo.Documents[*doc.Drawing]
 	openDrawing = func(path string) {
 		if _, err := docs.Open(path); err != nil {
@@ -131,8 +150,8 @@ func main() {
 	docs = mygo.NewDocuments(mygo.DocumentsOptions[*doc.Drawing]{
 		Types: []mygo.DocumentType{{Name: "tldraw Drawing", Extensions: []string{"tldr"}}},
 		New:   doc.New,
-		// With files to open, no untitled document comes up beside them.
-		NoUntitled: len(files) > 0,
+		// The home screen comes up where an untitled drawing would.
+		NoUntitled: true,
 		Read:       func(r io.Reader) (*doc.Drawing, error) { return doc.Read(r) },
 		Write:      func(w io.Writer, d *doc.Drawing) error { return doc.Write(w, d) },
 		// Records don't change once made, so a drawing compares by them:
@@ -167,9 +186,63 @@ func main() {
 			return w.win
 		},
 	})
+
+	homeApp := home.New(v)
+
+	// A drawing started here belongs to the folder: it is saved there at
+	// once, under a name of its own, rather than asking where to go.
+	newDrawing = func() {
+		d := docs.New()
+		path := v.Unique("Drawing")
+		if err := d.SaveAs(path); err != nil && !errors.Is(err, mygo.ErrCanceled) {
+			log.Printf("godraw: %s: %v", path, err)
+		}
+		homeApp.Refresh()
+	}
+
+	homeApp.Open = func(path string) { go openDrawing(path) }
+	homeApp.New = func() { newDrawing() }
+	homeApp.Reveal = func() { mygo.Shell.OpenPath(v.Dir()) }
+
+	var homeWin *mygo.Window
+	showHome := func() {
+		if homeWin == nil {
+			homeWin = mygo.NewWindow(mygo.WindowOptions{
+				Title: "godraw", Width: 1120, Height: 740, MinWidth: 900, MinHeight: 560,
+				StateKey: "home",
+				Content:  ui.View(homeApp.View),
+			})
+			win := homeWin
+			win.OnClosed(func() { homeWin = nil })
+			// Drawings dropped on the window join the folder.
+			win.OnFileDrop(func(e *mygo.FileDropEvent) {
+				go func() {
+					for _, p := range e.Paths {
+						if isDrawing(p) {
+							if _, err := v.Import(p); err != nil {
+								log.Printf("godraw: %s: %v", p, err)
+							}
+						}
+					}
+					win.Update(func() { homeApp.Refresh() })
+				}()
+			})
+		}
+		homeApp.Refresh()
+		homeWin.Show()
+		homeWin.Focus()
+	}
+
 	mygo.App.WhenReady(func() {
-		mygo.App.SetMenu(menu())
+		mygo.App.SetMenu(menu(showHome))
+		// Clicking the app with no window open brings the home screen up.
+		mygo.App.OnActivate(func(visible bool) {
+			if !visible {
+				showHome()
+			}
+		})
 		if len(files) == 0 {
+			showHome()
 			return
 		}
 		go func() {
@@ -182,7 +255,7 @@ func main() {
 				opened++
 			}
 			if opened == 0 {
-				docs.New() // nothing else would show a window
+				showHome() // nothing else would show a window
 			}
 		}()
 	})

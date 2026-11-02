@@ -10,11 +10,25 @@ affiliated with tldraw, Inc.
 ## Run
 
 ```sh
-go run .                    # a new drawing
+go run .                    # the home screen
 go run . drawing.tldr       # open a file
 go tool mygo build          # package build/<platform>/godraw.app and a .dmg
 go test ./...
 ```
+
+## The folder
+
+Drawings live in one folder, which the app makes the first time it runs and uses ever
+after: `~/Documents/godraw`, or `$GODRAW_VAULT` when that names one. The first time, it
+puts a welcome drawing in it.
+
+The home screen is the front door, in the manner of Obsidian's vault screen: the folder
+and its drawings on the left, and on the right a search, a way to start a drawing, and a
+grid of every drawing in the folder, each with a picture of its page. New drawings are
+saved into the folder straight away, under a name of their own, rather than asking where
+to go; dropped `.tldr` files are copied in. `⌘N` starts a drawing, `⌘⇧H` comes back here.
+
+![The home screen, in the light](examples/screenshots/home-light.png)
 
 ## Try the showcase
 
@@ -82,6 +96,8 @@ Known differences:
 | `internal/doc` | Records, fractional indices, and the `.tldr` format |
 | `internal/editor` | Camera, selection, tools and gestures, undo, and what each shape draws; no UI dependency, so it is tested without a window |
 | `internal/app` | The native UI: canvas painter, panels, keyboard, export |
+| `internal/home` | The home screen: the folder, its drawings and their pictures |
+| `internal/vault` | The folder the drawings are kept in, and the welcome drawing |
 | `internal/assets` | Embedded font and icons |
 | `e2e.go` | With `-tags e2e`, lets another process drive the app over MyGo's automation socket |
 
