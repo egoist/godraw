@@ -201,6 +201,12 @@ func (a *App) geoButton(c *ui.Context) {
 
 // --- style panel ---
 
+// stylePanelWidth is wide enough for the widest row the panel shows, which
+// is the arrowheads': a label, and a select, whose least width MyGo keeps at
+// 140 whatever it is given, so that the two fit within it and its padding
+// rather than hanging off its right side.
+const stylePanelWidth = 200
+
 func (a *App) stylePanel(c *ui.Context) {
 	e := a.ed
 	colorV, showColor := e.SharedStyle(editor.StyleColor)
@@ -217,7 +223,7 @@ func (a *App) stylePanel(c *ui.Context) {
 	if !showColor && !showFill && !showDash && !showSize && !showFont {
 		return
 	}
-	panel := panelStyle(c, ui.Column(c.Key("styles"))).Absolute().Top(12).Right(12).Width(180).Padding(8).Gap(8)
+	panel := panelStyle(c, ui.Column(c.Key("styles"))).Absolute().Top(12).Right(12).Width(stylePanelWidth).Padding(8).Gap(8)
 	panel.Children(func() {
 		if showColor {
 			a.colorGrid(c, colorV)

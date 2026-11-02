@@ -153,6 +153,31 @@ func TestPanelsTakeThePointer(t *testing.T) {
 	}
 }
 
+func TestStylePanelHoldsItsRows(t *testing.T) {
+	a, tt, _ := newTest(t)
+	e := a.Editor()
+	// An arrow shows the panel's widest rows: the two arrowheads, a label
+	// and a select each, and a select is never narrower than 140.
+	e.SetTool(editor.ToolArrow)
+	drag(tt, 200, 400, 500, 400)
+	tt.Frame()
+	e.SetTool(editor.ToolSelect)
+	tt.ClickAt(350, 400)
+	tt.Frame()
+	// The panel sits 12 off the window's right edge, and nothing of it may
+	// hang past that edge, where it would run off the window.
+	const inset = 12
+	for _, name := range []string{"Start arrowhead", "End arrowhead"} {
+		r, ok := tt.Find(name)
+		if !ok {
+			t.Fatalf("the panel shows no %s", name)
+		}
+		if right := r.X + r.W; right > 1280-inset {
+			t.Errorf("%s ends at %v, past the panel's right edge at %v", name, right, 1280-inset)
+		}
+	}
+}
+
 func TestEditText(t *testing.T) {
 	a, tt, _ := newTest(t)
 	e := a.Editor()
